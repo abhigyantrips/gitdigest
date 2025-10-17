@@ -1,8 +1,7 @@
-import { mkdtemp, readFile, readdir, rm, stat } from 'fs/promises';
 import ignore from 'ignore';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import simpleGit from 'simple-git';
+import git from 'isomorphic-git';
+import http from 'isomorphic-git/http/node';
+import { Volume, createFsFromVolume } from 'memfs';
 
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -42,7 +41,7 @@ interface IngestRequest {
   branch?: string;
 }
 
-export const maxDuration = 60; // 60 seconds timeout
+export const maxDuration = 60;
 
 function parseGitUrl(
   url: string
@@ -83,33 +82,11 @@ function parseGitUrl(
   }
 }
 
-function buildCloneUrl(repoUrl: string, token?: string): string {
-  if (!token) return repoUrl;
-
+function buildCloneUrl(repoUrl: string): string {
   try {
     const url = new URL(
       repoUrl.startsWith('http') ? repoUrl : `https://${repoUrl}`
     );
-
-    // Format based on provider
-    if (url.hostname.includes('github')) {
-      // GitHub: https://TOKEN@github.com/owner/repo.git
-      url.username = token;
-      url.password = '';
-    } else if (url.hostname.includes('gitlab')) {
-      // GitLab: https://oauth2:TOKEN@gitlab.com/owner/repo.git
-      url.username = 'oauth2';
-      url.password = token;
-    } else if (url.hostname.includes('bitbucket')) {
-      // Bitbucket: https://x-token-auth:TOKEN@bitbucket.org/owner/repo.git
-      url.username = 'x-token-auth';
-      url.password = token;
-    } else {
-      // Generic: TOKEN as username
-      url.username = token;
-      url.password = '';
-    }
-
     return url.toString();
   } catch {
     return repoUrl;
@@ -117,8 +94,6 @@ function buildCloneUrl(repoUrl: string, token?: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  let tempDir: string | null = null;
-
   try {
     const body: IngestRequest = await request.json();
     const {
@@ -139,35 +114,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create temp directory
-    tempDir = await mkdtemp(join(tmpdir(), 'gitingest-'));
+    // Create in-memory filesystem
+    const vol = new Volume();
+    const fs = createFsFromVolume(vol);
+    const dir = '/repo';
 
-    // Configure Git
-    const git = simpleGit({
-      maxConcurrentProcesses: 1,
-      timeout: { block: 50000 },
-    });
+    // Build clone URL
+    const cloneUrl = buildCloneUrl(repoUrl);
 
-    // Build clone URL with token
-    const cloneUrl = buildCloneUrl(repoUrl, token);
-
-    // Clone options
-    const cloneOptions = ['--depth', '1'];
-    if (branch) {
-      cloneOptions.push('--branch', branch);
-    }
-
-    // Clone repository
+    // Clone repository with isomorphic-git
     try {
-      await git.clone(cloneUrl, tempDir, cloneOptions);
+      await git.clone({
+        fs,
+        http,
+        dir,
+        url: cloneUrl,
+        ref: branch,
+        singleBranch: true,
+        depth: 1,
+        ...(token && {
+          onAuth: () => ({
+            username: token,
+            password: '',
+          }),
+        }),
+      });
     } catch (error) {
-      // Handle common Git errors
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
       if (
-        errorMessage.includes('Authentication failed') ||
-        errorMessage.includes('access denied')
+        errorMessage.includes('401') ||
+        errorMessage.includes('403') ||
+        errorMessage.includes('authentication')
       ) {
         return NextResponse.json(
           {
@@ -178,10 +157,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (
-        errorMessage.includes('not found') ||
-        errorMessage.includes('does not exist')
-      ) {
+      if (errorMessage.includes('404') || errorMessage.includes('not found')) {
         return NextResponse.json(
           { error: 'Repository not found. Check the URL and try again.' },
           { status: 404 }
@@ -201,14 +177,20 @@ export async function POST(request: NextRequest) {
     const fileList: Array<{ path: string; content: string; size: number }> = [];
     const treeList: Array<{ path: string; isDirectory: boolean }> = [];
 
-    async function readDirRecursive(dir: string, relativePath = '') {
-      const entries = await readdir(dir, { withFileTypes: true });
+    async function readDirRecursive(
+      currentDir: string,
+      relativePath = ''
+    ): Promise<void> {
+      let entries: string[];
+      try {
+        entries = fs.readdirSync(currentDir) as string[];
+      } catch {
+        return;
+      }
 
       for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        const relPath = relativePath
-          ? `${relativePath}/${entry.name}`
-          : entry.name;
+        const fullPath = `${currentDir}/${entry}`;
+        const relPath = relativePath ? `${relativePath}/${entry}` : entry;
 
         // Skip .git directory
         if (relPath.startsWith('.git')) continue;
@@ -227,19 +209,24 @@ export async function POST(request: NextRequest) {
           if (!matches) continue;
         }
 
-        if (entry.isDirectory()) {
+        let stats;
+        try {
+          stats = fs.statSync(fullPath);
+        } catch {
+          continue;
+        }
+
+        if (stats.isDirectory()) {
           treeList.push({ path: relPath, isDirectory: true });
           await readDirRecursive(fullPath, relPath);
         } else {
-          const stats = await stat(fullPath);
-
           // Check file size
           if (stats.size > maxFileSize * 1024) continue;
 
           treeList.push({ path: relPath, isDirectory: false });
 
           try {
-            const content = await readFile(fullPath, 'utf-8');
+            const content = fs.readFileSync(fullPath, 'utf-8') as string;
             fileList.push({
               path: relPath,
               content,
@@ -257,7 +244,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await readDirRecursive(tempDir);
+    await readDirRecursive(dir);
 
     // Generate tree
     const tree = generateTree(treeList, repoInfo.repo);
@@ -305,15 +292,6 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
-  } finally {
-    // Clean up temp directory
-    if (tempDir) {
-      try {
-        await rm(tempDir, { recursive: true, force: true });
-      } catch (e) {
-        console.error('Failed to clean up temp dir:', e);
-      }
-    }
   }
 }
 
