@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 
 interface IngestResult {
@@ -209,18 +210,16 @@ function HomeContent() {
                   Max file size:{' '}
                   <span className="font-bold">{formatSize(maxFileSize)}</span>
                 </Label>
-                <input
-                  type="range"
-                  id="file-size"
-                  min="1"
-                  max="500"
-                  value={sliderPosition}
-                  onChange={handleSliderChange}
-                  disabled={loading}
-                  className="h-3 w-full appearance-none rounded-sm border-2 border-gray-900 bg-gradient-to-r from-red-500 to-red-500 focus:outline-none disabled:opacity-50 [&::-webkit-slider-thumb]:h-7 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gray-900 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[3px_3px_0_#000]"
-                  style={{
-                    backgroundSize: `${(sliderPosition / 500) * 100}% 100%`,
+                <Slider
+                  min={1}
+                  max={500}
+                  value={[sliderPosition]}
+                  onValueChange={(vals) => {
+                    const position = Number(vals[0] ?? 1);
+                    setSliderPosition(position);
+                    setMaxFileSize(logSliderToSize(position));
                   }}
+                  disabled={loading}
                 />
               </div>
             </div>
