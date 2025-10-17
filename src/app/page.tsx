@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 
 import { useSearchParams } from 'next/navigation';
 
@@ -50,7 +50,7 @@ function formatSize(sizeInKB: number): string {
   return `${Math.round(sizeInKB)}KB`;
 }
 
-export default function Home() {
+function HomeContent() {
   const searchParams = useSearchParams();
   const urlParam = searchParams?.get('url');
 
@@ -59,6 +59,8 @@ export default function Home() {
   const [maxFileSize, setMaxFileSize] = useState(logSliderToSize(243));
   const [patternType, setPatternType] = useState('exclude');
   const [pattern, setPattern] = useState('');
+  const [branch, setBranch] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -69,14 +71,25 @@ export default function Home() {
   const [autoSubmit, setAutoSubmit] = useState(false);
 
   useEffect(() => {
+    // Check for hash-based URL
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hashUrl = window.location.hash.slice(1);
+      if (hashUrl && !autoSubmit) {
+        setInputText(decodeURIComponent(hashUrl));
+        setAutoSubmit(true);
+        setTimeout(() => {
+          document.querySelector('form')?.requestSubmit();
+        }, 100);
+        return;
+      }
+    }
+
+    // Check for query param
     if (urlParam && !autoSubmit) {
       setInputText(urlParam);
       setAutoSubmit(true);
       setTimeout(() => {
-        const form = document.querySelector('form');
-        if (form) {
-          form.requestSubmit();
-        }
+        document.querySelector('form')?.requestSubmit();
       }, 100);
     }
   }, [urlParam, autoSubmit]);
@@ -94,10 +107,9 @@ export default function Home() {
     setResult(null);
     setTokenCount(null);
     setProgress(0);
-    setProgressText('Fetching repository...');
+    setProgressText('Starting ingestion...');
 
     try {
-      // Parse patterns
       const patterns = pattern
         .split(',')
         .map((p) => p.trim())
@@ -105,30 +117,44 @@ export default function Home() {
 
       const options = {
         maxFileSize,
-        token: token || undefined,
+        token: isPrivate && token ? token : undefined,
+        isPrivate,
+        branch: branch || undefined,
         ...(patternType === 'include'
           ? { includePatterns: patterns }
           : { excludePatterns: patterns }),
       };
 
-      // Ingest repository
       const data = await ingestRepository(
         inputText,
         options,
         (current, total) => {
           setProgress((current / total) * 100);
-          setProgressText(`Processing files: ${current}/${total}`);
+
+          if (current < 20) {
+            setProgressText('Connecting to repository...');
+          } else if (current < 50) {
+            setProgressText('Cloning repository...');
+          } else if (current < 80) {
+            setProgressText('Processing files...');
+          } else {
+            setProgressText('Finalizing...');
+          }
         }
       );
 
       setResult(data);
 
-      // Calculate tokens client-side
       const textToTokenize = `${data.tree}\n${data.content}`;
       const tokens = estimateTokens(textToTokenize);
       setTokenCount(tokens);
+
+      // Update URL hash for sharing
+      if (typeof window !== 'undefined') {
+        window.location.hash = encodeURIComponent(inputText);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
     } finally {
       setLoading(false);
       setProgress(0);
@@ -138,13 +164,16 @@ export default function Home() {
 
   return (
     <div className="mx-auto max-w-4xl p-8">
-      <h1 className="mb-8 text-4xl font-bold">GitIngest</h1>
+      <h1 className="mb-2 text-4xl font-bold">GitIngest</h1>
+      <p className="text-muted-foreground mb-8">
+        Generate AI-ready digests from any Git repository
+      </p>
 
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>Repository Ingestion</CardTitle>
           <CardDescription>
-            Enter a GitHub repository URL to generate a digest
+            Supports GitHub, GitLab, Bitbucket, Gitea, and Codeberg
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -154,7 +183,7 @@ export default function Home() {
               <Input
                 id="repo-url"
                 type="text"
-                placeholder="https://github.com/user/repo"
+                placeholder="https://github.com/user/repo or user/repo"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 required
@@ -164,8 +193,20 @@ export default function Home() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label htmlFor="branch">Branch (optional)</Label>
+                <Input
+                  id="branch"
+                  type="text"
+                  placeholder="main, master, dev..."
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="file-size">
-                  Include files under:{' '}
+                  Max file size:{' '}
                   <span className="font-bold">{formatSize(maxFileSize)}</span>
                 </Label>
                 <input
@@ -182,7 +223,9 @@ export default function Home() {
                   }}
                 />
               </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="pattern-type">Pattern Type</Label>
                 <Select
@@ -199,31 +242,78 @@ export default function Home() {
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="pattern">Patterns (comma-separated)</Label>
+                <Input
+                  id="pattern"
+                  type="text"
+                  placeholder="*.log, test/*, docs/*"
+                  value={pattern}
+                  onChange={(e) => setPattern(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="pattern">Patterns</Label>
-              <Input
-                id="pattern"
-                type="text"
-                placeholder="e.g., *.log, node_modules"
-                value={pattern}
-                onChange={(e) => setPattern(e.target.value)}
-                disabled={loading}
-              />
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="private-repo"
+                  checked={isPrivate}
+                  onChange={(e) => setIsPrivate(e.target.checked)}
+                  disabled={loading}
+                  className="border-input h-4 w-4 rounded"
+                />
+                <Label htmlFor="private-repo" className="cursor-pointer">
+                  Private repository (requires access token)
+                </Label>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="token">GitHub Token (optional)</Label>
-              <Input
-                id="token"
-                type="password"
-                placeholder="For private repositories"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                disabled={loading}
-              />
-            </div>
+            {isPrivate && (
+              <div className="space-y-2">
+                <Label htmlFor="token">Personal Access Token</Label>
+                <Input
+                  id="token"
+                  type="password"
+                  placeholder="GitHub: ghp_xxx | GitLab: glpat-xxx | Bitbucket: App password"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  disabled={loading}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Get your token:{' '}
+                  <a
+                    href="https://github.com/settings/tokens"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-foreground underline"
+                  >
+                    GitHub
+                  </a>
+                  {' | '}
+                  <a
+                    href="https://gitlab.com/-/profile/personal_access_tokens"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-foreground underline"
+                  >
+                    GitLab
+                  </a>
+                  {' | '}
+                  <a
+                    href="https://bitbucket.org/account/settings/app-passwords/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-foreground underline"
+                  >
+                    Bitbucket
+                  </a>
+                </p>
+              </div>
+            )}
 
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Processing...' : 'Ingest Repository'}
@@ -249,6 +339,14 @@ export default function Home() {
 
       {result && <ResultsSection result={result} tokenCount={tokenCount} />}
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="p-8">Loading…</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
 
