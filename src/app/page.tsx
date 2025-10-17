@@ -1,13 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+import { useSearchParams } from 'next/navigation';
+
+import { ingestRepository } from '@/lib/ingest';
+import { estimateTokens } from '@/lib/tokenizer';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface IngestResult {
   repo_url: string;
@@ -17,57 +36,116 @@ interface IngestResult {
   content: string;
 }
 
+function logSliderToSize(position: number): number {
+  const maxPosition = 500;
+  const maxValue = Math.log(102400);
+  const value = Math.exp(maxValue * Math.pow(position / maxPosition, 1.5));
+  return Math.round(value);
+}
+
+function formatSize(sizeInKB: number): string {
+  if (sizeInKB >= 1024) {
+    return `${Math.round(sizeInKB / 1024)}MB`;
+  }
+  return `${Math.round(sizeInKB)}KB`;
+}
+
 export default function Home() {
+  const searchParams = useSearchParams();
+  const urlParam = searchParams?.get('url');
+
   const [inputText, setInputText] = useState('');
-  const [maxFileSize, setMaxFileSize] = useState(5);
+  const [sliderPosition, setSliderPosition] = useState(243);
+  const [maxFileSize, setMaxFileSize] = useState(logSliderToSize(243));
   const [patternType, setPatternType] = useState('exclude');
   const [pattern, setPattern] = useState('');
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
   const [result, setResult] = useState<IngestResult | null>(null);
+  const [tokenCount, setTokenCount] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [autoSubmit, setAutoSubmit] = useState(false);
+
+  useEffect(() => {
+    if (urlParam && !autoSubmit) {
+      setInputText(urlParam);
+      setAutoSubmit(true);
+      setTimeout(() => {
+        const form = document.querySelector('form');
+        if (form) {
+          form.requestSubmit();
+        }
+      }, 100);
+    }
+  }, [urlParam, autoSubmit]);
+
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const position = Number(e.target.value);
+    setSliderPosition(position);
+    setMaxFileSize(logSliderToSize(position));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     setResult(null);
+    setTokenCount(null);
+    setProgress(0);
+    setProgressText('Fetching repository...');
 
     try {
-      const response = await fetch('/api/ingest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input_text: inputText,
-          max_file_size: maxFileSize * 1024 * 1024,
-          pattern_type: patternType,
-          pattern,
-          token: token || undefined,
-        }),
-      });
+      // Parse patterns
+      const patterns = pattern
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean);
 
-      const data = await response.json();
+      const options = {
+        maxFileSize,
+        token: token || undefined,
+        ...(patternType === 'include'
+          ? { includePatterns: patterns }
+          : { excludePatterns: patterns }),
+      };
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Ingestion failed');
-      }
+      // Ingest repository
+      const data = await ingestRepository(
+        inputText,
+        options,
+        (current, total) => {
+          setProgress((current / total) * 100);
+          setProgressText(`Processing files: ${current}/${total}`);
+        }
+      );
 
       setResult(data);
+
+      // Calculate tokens client-side
+      const textToTokenize = `${data.tree}\n${data.content}`;
+      const tokens = estimateTokens(textToTokenize);
+      setTokenCount(tokens);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
+      setProgress(0);
+      setProgressText('');
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-8">
-      <h1 className="text-4xl font-bold mb-8">GitIngest</h1>
+    <div className="mx-auto max-w-4xl p-8">
+      <h1 className="mb-8 text-4xl font-bold">GitIngest</h1>
 
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>Repository Ingestion</CardTitle>
-          <CardDescription>Enter a GitHub repository URL to generate a digest</CardDescription>
+          <CardDescription>
+            Enter a GitHub repository URL to generate a digest
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -80,24 +158,38 @@ export default function Home() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 required
+                disabled={loading}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="max-file-size">Max File Size (MB)</Label>
-                <Input
-                  id="max-file-size"
-                  type="number"
-                  value={maxFileSize}
-                  onChange={(e) => setMaxFileSize(Number(e.target.value))}
+                <Label htmlFor="file-size">
+                  Include files under:{' '}
+                  <span className="font-bold">{formatSize(maxFileSize)}</span>
+                </Label>
+                <input
+                  type="range"
+                  id="file-size"
                   min="1"
+                  max="500"
+                  value={sliderPosition}
+                  onChange={handleSliderChange}
+                  disabled={loading}
+                  className="h-3 w-full appearance-none rounded-sm border-2 border-gray-900 bg-gradient-to-r from-red-500 to-red-500 focus:outline-none disabled:opacity-50 [&::-webkit-slider-thumb]:h-7 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gray-900 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[3px_3px_0_#000]"
+                  style={{
+                    backgroundSize: `${(sliderPosition / 500) * 100}% 100%`,
+                  }}
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="pattern-type">Pattern Type</Label>
-                <Select value={patternType} onValueChange={setPatternType}>
+                <Select
+                  value={patternType}
+                  onValueChange={setPatternType}
+                  disabled={loading}
+                >
                   <SelectTrigger id="pattern-type">
                     <SelectValue placeholder="Select pattern type" />
                   </SelectTrigger>
@@ -117,6 +209,7 @@ export default function Home() {
                 placeholder="e.g., *.log, node_modules"
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
+                disabled={loading}
               />
             </div>
 
@@ -128,12 +221,22 @@ export default function Home() {
                 placeholder="For private repositories"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
+                disabled={loading}
               />
             </div>
 
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Processing...' : 'Ingest Repository'}
             </Button>
+
+            {loading && progressText && (
+              <div className="space-y-2">
+                <Progress value={progress} />
+                <p className="text-muted-foreground text-center text-sm">
+                  {progressText}
+                </p>
+              </div>
+            )}
           </form>
         </CardContent>
       </Card>
@@ -144,61 +247,120 @@ export default function Home() {
         </Alert>
       )}
 
-      {result && (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre className="bg-muted p-4 rounded-lg overflow-auto text-sm">
-                {result.summary}
-              </pre>
-            </CardContent>
-          </Card>
+      {result && <ResultsSection result={result} tokenCount={tokenCount} />}
+    </div>
+  );
+}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Directory Structure</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre className="bg-muted p-4 rounded-lg overflow-auto max-h-96 text-sm">
-                {result.tree}
-              </pre>
-            </CardContent>
-          </Card>
+function ResultsSection({
+  result,
+  tokenCount,
+}: {
+  result: IngestResult;
+  tokenCount: string | null;
+}) {
+  const copyToClipboard = async (text: string, buttonId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      const button = document.getElementById(buttonId);
+      if (button) {
+        const originalText = button.innerHTML;
+        button.innerHTML = 'Copied!';
+        setTimeout(() => {
+          button.innerHTML = originalText;
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Files Content</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                readOnly
-                value={result.content}
-                className="h-96 font-mono text-sm"
-              />
-            </CardContent>
-          </Card>
+  const copyAll = () => {
+    const fullDigest = `${result.tree}\n\n${result.content}`;
+    copyToClipboard(fullDigest, 'copy-all-btn');
+  };
 
+  const downloadDigest = () => {
+    const fullDigest = `${result.tree}\n\n${result.content}`;
+    const blob = new Blob([fullDigest], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${result.short_repo_url.replace('/', '-')}-digest.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const summaryWithTokens = tokenCount
+    ? `${result.summary}\nEstimated tokens: ${tokenCount}`
+    : result.summary;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Summary</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <pre className="bg-muted overflow-auto rounded-lg p-4 text-sm">
+            {summaryWithTokens}
+          </pre>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Directory Structure</CardTitle>
           <Button
-            onClick={() => {
-              const blob = new Blob([result.tree + '\n\n' + result.content], {
-                type: 'text/plain',
-              });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${result.short_repo_url.replace('/', '-')}-digest.txt`;
-              a.click();
-            }}
-            variant="secondary"
-            className="w-full"
+            id="copy-tree-btn"
+            onClick={() => copyToClipboard(result.tree, 'copy-tree-btn')}
+            variant="outline"
+            size="sm"
           >
-            Download Digest
+            Copy
           </Button>
-        </div>
-      )}
+        </CardHeader>
+        <CardContent>
+          <pre className="bg-muted max-h-96 overflow-auto rounded-lg p-4 text-sm">
+            {result.tree}
+          </pre>
+        </CardContent>
+      </Card>
+
+      <div className="flex gap-4">
+        <Button
+          id="copy-all-btn"
+          onClick={copyAll}
+          variant="secondary"
+          className="flex-1"
+        >
+          Copy All
+        </Button>
+        <Button onClick={downloadDigest} variant="secondary" className="flex-1">
+          Download
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Files Content</CardTitle>
+          <Button
+            id="copy-content-btn"
+            onClick={() => copyToClipboard(result.content, 'copy-content-btn')}
+            variant="outline"
+            size="sm"
+          >
+            Copy
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            readOnly
+            value={result.content}
+            className="h-96 font-mono text-sm"
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }
