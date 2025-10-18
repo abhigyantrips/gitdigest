@@ -1,16 +1,16 @@
 {
   "endOfLine": "lf",
   "importOrder": [
-    "^(react/(.*)$)|^(react$)",
-    "^(next/(.*)$)|^(next$)",
+    "^(react/(.*)$)|^(react$)|^(react-dom$)|^(react-dom/(.*)$)",
+    "^(@vitejs/(.*)$)|^(vite$)",
     "^types$",
     "^@/types",
     "^@/config/(.*)$",
     "^@/lib/(.*)$",
     "^@/hooks/(.*)$",
     "^@/components/(.*)$",
+    "^@/pages/(.*)$",
     "^@/styles/(.*)$",
-    "^@/app/(.*)$",
     "^[./]"
   ],
   "importOrderSeparation": true,
