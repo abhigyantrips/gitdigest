@@ -2,6 +2,7 @@ import {
   Check,
   Clipboard,
   FileText,
+  GitCompare,
   Globe,
   Heart,
   Lightbulb,
@@ -41,6 +42,16 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  TreeExpander,
+  TreeIcon,
+  TreeLabel,
+  TreeNode,
+  TreeNodeContent,
+  TreeNodeTrigger,
+  TreeProvider,
+  TreeView,
+} from '@/components/ui/tree';
 
 interface IngestResult {
   repo_url: string;
@@ -48,6 +59,7 @@ interface IngestResult {
   summary: string;
   tree: string;
   content: string;
+  treeEntries?: Array<{ path: string; isDirectory: boolean }>;
 }
 
 function logSliderToSize(position: number): number {
@@ -463,13 +475,123 @@ function ResultsSection({
               variant="outline"
               size="sm"
             >
-              Copy
+              Copy Text
             </Button>
           </CardHeader>
           <CardContent>
-            <pre className="bg-muted max-h-96 overflow-auto rounded-lg p-4 text-sm">
-              {result.tree}
-            </pre>
+            {result.treeEntries && result.treeEntries.length > 0 ? (
+              (() => {
+                type Node = {
+                  name: string;
+                  children?: Record<string, Node>;
+                  isDirectory: boolean;
+                };
+                const root: Record<string, Node> = {};
+                for (const entry of result.treeEntries!) {
+                  const parts = entry.path.split('/');
+                  let current = root;
+                  parts.forEach((part, idx) => {
+                    const isLast = idx === parts.length - 1;
+                    if (!current[part]) {
+                      current[part] = {
+                        name: part,
+                        isDirectory: !isLast || entry.isDirectory,
+                      };
+                    }
+                    if (!isLast) {
+                      current[part].children = current[part].children || {};
+                      current = current[part].children!;
+                    }
+                  });
+                }
+
+                // Collect all nodeIds for expansion, including root
+                const allNodeIds: string[] = ['root'];
+                const collectNodeIds = (
+                  nodes: Record<string, Node>,
+                  level = 1
+                ) => {
+                  Object.entries(nodes).forEach(([key, item], idx) => {
+                    const nodeId = `${level}-${key}-${idx}`;
+                    allNodeIds.push(nodeId);
+                    if (item.isDirectory && item.children) {
+                      collectNodeIds(item.children, level + 1);
+                    }
+                  });
+                };
+                collectNodeIds(root, 1);
+
+                const renderNodes = (
+                  nodes: Record<string, Node>,
+                  level = 1
+                ) => {
+                  const entries = Object.entries(nodes).sort(
+                    ([aName, a], [bName, b]) => {
+                      if (a.isDirectory !== b.isDirectory)
+                        return a.isDirectory ? -1 : 1;
+                      return aName.localeCompare(bName);
+                    }
+                  );
+                  return entries.map(([key, item], idx) => {
+                    const hasChildren =
+                      !!item.children && Object.keys(item.children).length > 0;
+                    const isLast = idx === entries.length - 1;
+                    const nodeId = `${level}-${key}-${idx}`;
+                    return (
+                      <TreeNode
+                        key={nodeId}
+                        nodeId={nodeId}
+                        level={level}
+                        isLast={isLast}
+                      >
+                        <TreeNodeTrigger>
+                          <TreeExpander
+                            hasChildren={item.isDirectory && hasChildren}
+                          />
+                          <TreeIcon
+                            hasChildren={item.isDirectory}
+                            className={
+                              item.isDirectory
+                                ? 'text-yellow-500'
+                                : 'text-muted-foreground'
+                            }
+                          />
+                          <TreeLabel>{item.name}</TreeLabel>
+                        </TreeNodeTrigger>
+                        {item.isDirectory && hasChildren && (
+                          <TreeNodeContent hasChildren>
+                            {renderNodes(item.children!, level + 1)}
+                          </TreeNodeContent>
+                        )}
+                      </TreeNode>
+                    );
+                  });
+                };
+
+                // Root node label and icon
+                const repoName = result.short_repo_url.split('/')[1] || 'repo';
+                return (
+                  <TreeProvider defaultExpandedIds={['root', ...allNodeIds]}>
+                    <TreeView className="bg-muted/20 max-h-96 overflow-auto rounded-lg">
+                      <TreeNode nodeId="root" level={0}>
+                        <TreeNodeTrigger>
+                          {/* Orange git icon for root */}
+                          <GitCompare className="mr-2 h-4 w-4 text-orange-500" />
+                          <TreeLabel>{repoName}</TreeLabel>
+                        </TreeNodeTrigger>
+                        <TreeNodeContent hasChildren>
+                          {renderNodes(root, 1)}
+                        </TreeNodeContent>
+                      </TreeNode>
+                    </TreeView>
+                  </TreeProvider>
+                );
+              })()
+            ) : (
+              <pre className="bg-muted max-h-96 overflow-auto rounded-lg p-4 text-sm">
+                {result.tree}
+              </pre>
+            )}
           </CardContent>
         </Card>
 

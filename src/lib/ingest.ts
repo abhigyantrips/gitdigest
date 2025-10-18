@@ -60,6 +60,7 @@ interface IngestResult {
   summary: string;
   tree: string;
   content: string;
+  treeEntries: Array<{ path: string; isDirectory: boolean }>; // added structured tree
 }
 
 interface RepoInfo {
@@ -353,6 +354,7 @@ export async function ingestRepositoryClient(
       summary,
       tree,
       content,
+      treeEntries: treeList,
     };
   } catch (error) {
     // Cleanup on error

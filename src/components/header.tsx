@@ -14,7 +14,7 @@ export function Header() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" asChild>
             <a
               href="https://github.com/abhigyantrips/gitdigest"
               target="_blank"
