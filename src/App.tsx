@@ -3,14 +3,10 @@ import {
   Clipboard,
   FileText,
   GitCompare,
-  Globe,
   Heart,
   Lightbulb,
-  Lock,
-  Package,
   Rocket,
   Save,
-  Zap,
 } from 'lucide-react';
 
 import { useEffect, useState } from 'react';
@@ -182,32 +178,11 @@ function App() {
       <div>
         <Header />
         <div className="mx-auto max-w-4xl p-8">
-          <div className="mb-8">
-            <h1 className="mb-2 text-4xl font-bold">GitDigest</h1>
-            <p className="text-muted-foreground mb-2">
-              Generate AI-ready digests from any Git repository
-            </p>
-            <div className="text-muted-foreground flex flex-wrap gap-2 text-sm">
-              <span className="flex items-center gap-2 rounded-full bg-green-100 px-3 py-1 text-green-700 dark:bg-green-900 dark:text-green-300">
-                <Globe className="h-4 w-4" /> <span>100% Client-Side</span>
-              </span>
-              <span className="flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                <Lock className="h-4 w-4" /> <span>Private by Default</span>
-              </span>
-              <span className="flex items-center gap-2 rounded-full bg-purple-100 px-3 py-1 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
-                <Package className="h-4 w-4" /> <span>Works Offline</span>
-              </span>
-              <span className="flex items-center gap-2 rounded-full bg-orange-100 px-3 py-1 text-orange-700 dark:bg-orange-900 dark:text-orange-300">
-                <Zap className="h-4 w-4" /> <span>No Server Required</span>
-              </span>
-            </div>
-          </div>
-
           <Card className="mb-8">
             <CardHeader>
               <CardTitle>Repository Ingestion</CardTitle>
               <CardDescription>
-                Supports GitHub, GitLab, Bitbucket, Gitea, and Codeberg
+                Supports GitHub, GitLab, Bitbucket, Gitea, and Codeberg.
               </CardDescription>
             </CardHeader>
             <CardContent>

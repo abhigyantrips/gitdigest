@@ -4,13 +4,13 @@ import { Button } from '@/components/ui/button';
 export function Header() {
   return (
     <header className="border-b">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 p-4">
+      <div className="container mx-auto flex items-center justify-between gap-4 p-4">
         <div>
           <a href="/" className="text-xl font-bold">
-            gitdigest
+            GitDigest
           </a>
           <p className="text-muted-foreground text-sm">
-            Generate AI-ready digests from any Git repository
+            Generate AI-ready digests from any Git repository.
           </p>
         </div>
         <div className="flex items-center gap-2">
