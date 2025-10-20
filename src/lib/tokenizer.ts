@@ -1,5 +1,3 @@
-'use client';
-
 import { encode } from 'gpt-tokenizer';
 
 const SEPARATOR = '='.repeat(48);

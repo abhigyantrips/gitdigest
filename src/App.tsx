@@ -2,6 +2,7 @@ import {
   Check,
   Clipboard,
   FileText,
+  FolderGit2,
   GitCompare,
   Heart,
   Lightbulb,
@@ -12,9 +13,12 @@ import {
 import { useEffect, useState } from 'react';
 
 import { ingestRepositoryClient } from '@/lib/ingest';
+import { fetchUser, handleOAuthCallback } from '@/lib/oauth';
+import { saveToken } from '@/lib/storage';
 import { estimateTokens } from '@/lib/tokenizer';
 
 import { Header } from '@/components/header';
+import { RepoBrowser } from '@/components/repo-browser';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -74,6 +78,8 @@ function formatSize(sizeInKB: number): string {
 
 function App() {
   const [inputText, setInputText] = useState('');
+  const [oauthHandled, setOauthHandled] = useState(false);
+  const [showRepoBrowser, setShowRepoBrowser] = useState(false);
   const [sliderPosition, setSliderPosition] = useState(243);
   const [maxFileSize, setMaxFileSize] = useState(logSliderToSize(243));
   const [patternType, setPatternType] = useState('exclude');
@@ -87,6 +93,42 @@ function App() {
   const [result, setResult] = useState<IngestResult | null>(null);
   const [tokenCount, setTokenCount] = useState<string | null>(null);
   const [error, setError] = useState('');
+
+  // Handle OAuth callback on mount
+  useEffect(() => {
+    // Prevent double execution
+    if (oauthHandled) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+
+    if (code && state) {
+      // Mark as handled immediately
+      setOauthHandled(true);
+
+      // Clean URL first to prevent re-execution
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+
+      // Then handle the callback
+      handleOAuthCallback(code, state)
+        .then(async ({ accessToken, provider }) => {
+          const user = await fetchUser(provider, accessToken);
+          saveToken(provider, {
+            token: accessToken,
+            provider,
+            user,
+            connectedAt: new Date().toISOString(),
+          });
+
+          alert(`✅ Successfully connected to ${provider}!`);
+        })
+        .catch((err) => {
+          alert(`❌ OAuth failed: ${err.message}`);
+        });
+    }
+  }, []);
 
   useEffect(() => {
     // Check for hash-based URL
@@ -188,21 +230,46 @@ function App() {
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="repo-url">Repository URL</Label>
-                  <Input
-                    id="repo-url"
-                    type="text"
-                    placeholder="user/repo OR https://github.com/user/repo"
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    required
-                    disabled={loading}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    <Lightbulb className="inline-block h-4 w-4" /> Tip: Use
-                    short format (e.g., "facebook/react") or full URL
-                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowRepoBrowser(!showRepoBrowser)}
+                    className="w-full"
+                  >
+                    <FolderGit2 className="h-4 w-4" />
+                    {showRepoBrowser
+                      ? 'Enter URL Manually'
+                      : 'Browse Repositories'}
+                  </Button>
+
+                  {showRepoBrowser && (
+                    <RepoBrowser
+                      onSelect={(url, branch) => {
+                        setInputText(url);
+                        setBranch(branch);
+                        setShowRepoBrowser(false);
+                      }}
+                    />
+                  )}
                 </div>
+                {!showRepoBrowser && (
+                  <div className="space-y-2">
+                    <Label htmlFor="repo-url">Repository URL</Label>
+                    <Input
+                      id="repo-url"
+                      type="text"
+                      placeholder="user/repo OR https://github.com/user/repo"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      required
+                      disabled={loading}
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      <Lightbulb className="inline-block h-4 w-4" /> Tip: Use
+                      short format (e.g., "facebook/react") or full URL
+                    </p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
