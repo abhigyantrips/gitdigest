@@ -13,6 +13,12 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom'],
           tokenizer: ['gpt-tokenizer'],
+          three: [
+            'three',
+            '@react-three/fiber',
+            '@react-spring/three',
+            '@shadergradient/react',
+          ],
         },
       },
     },
@@ -32,8 +38,8 @@ export default defineConfig({
         name: 'GitDigest',
         short_name: 'GitDigest',
         description: 'Generate AI-ready digests from Git repositories',
-        theme_color: '#000000',
-        background_color: '#ffffff',
+        theme_color: '#0d0d0d',
+        background_color: '#0d0d0d',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',

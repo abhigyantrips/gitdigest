@@ -16,7 +16,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardHeader,
   CardTitle,
 } from '@/components/ui/card';
 
@@ -99,7 +98,7 @@ export function AccountSheet({ onClose }: AccountSheetProps) {
             <div>
               <h2 className="text-2xl font-bold">Account Connections</h2>
               <p className="text-muted-foreground text-sm">
-                Connect your Git providers to browse repositories
+                Connect your Git providers to browse repositories.
               </p>
             </div>
             <Button variant="ghost" size="icon" onClick={onClose}>
@@ -131,7 +130,7 @@ export function AccountSheet({ onClose }: AccountSheetProps) {
 
               return (
                 <Card key={provider.id}>
-                  <CardHeader>
+                  <CardContent>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <provider.icon
@@ -176,7 +175,7 @@ export function AccountSheet({ onClose }: AccountSheetProps) {
                         )}
                       </div>
                     </div>
-                  </CardHeader>
+                  </CardContent>
 
                   {isConnected && tokenData && (
                     <CardContent>

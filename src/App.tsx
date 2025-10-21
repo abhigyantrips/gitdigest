@@ -17,9 +17,9 @@ import { fetchUser, handleOAuthCallback } from '@/lib/oauth';
 import { saveToken } from '@/lib/storage';
 import { estimateTokens } from '@/lib/tokenizer';
 
+import { Background } from '@/components/background';
 import { Header } from '@/components/header';
 import { RepoBrowser } from '@/components/repo-browser';
-import { ThemeProvider } from '@/components/theme-provider';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -216,8 +216,13 @@ function App() {
   };
 
   return (
-    <ThemeProvider defaultTheme="system" storageKey="gitdigest-theme">
-      <div>
+    <>
+      {/* Fixed background shader gradient */}
+      <div className="fixed inset-0 -z-10">
+        <Background />
+      </div>
+
+      <div className="relative">
         <Header />
         <div className="mx-auto max-w-4xl p-8">
           <Card className="mb-8">
@@ -442,7 +447,7 @@ function App() {
           </footer>
         </div>
       </div>
-    </ThemeProvider>
+    </>
   );
 }
 
