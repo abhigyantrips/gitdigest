@@ -7,7 +7,7 @@ import { defineConfig } from 'vite';
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: 'https://g.abhi.now/dist/',
+  base: 'https://g.abhi.now/',
   build: {
     rollupOptions: {
       output: {
