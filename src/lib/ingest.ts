@@ -32,6 +32,7 @@ const DEFAULT_IGNORE_PATTERNS = [
   '*.ico',
   '*.pdf',
   'package-lock.json',
+  'pnpm-lock.yaml',
   'yarn.lock',
   '.pnpm-store',
   'bun.lock',
@@ -60,7 +61,7 @@ interface IngestResult {
   summary: string;
   tree: string;
   content: string;
-  treeEntries: Array<{ path: string; isDirectory: boolean }>; // added structured tree
+  treeEntries: Array<{ path: string; isDirectory: boolean }>;
 }
 
 interface RepoInfo {
