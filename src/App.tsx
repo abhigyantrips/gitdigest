@@ -6,6 +6,7 @@ import {
   GitCompare,
   Heart,
   Lightbulb,
+  Lock,
   Rocket,
   Save,
 } from 'lucide-react';
@@ -426,24 +427,17 @@ function App() {
 
           {result && <ResultsSection result={result} tokenCount={tokenCount} />}
 
-          <footer className="text-muted-foreground mt-12 border-t pt-6 text-center text-sm">
-            <p>
-              Built with{' '}
-              <Heart className="inline-block h-4 w-4 align-middle text-red-500" />{' '}
-              using{' '}
-              <a
-                href="https://isomorphic-git.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-foreground underline"
-              >
-                isomorphic-git
-              </a>
-            </p>
-            <p className="mt-2">
-              ⭐ Your data never leaves your browser • No servers • Fully open
-              source
-            </p>
+          <footer className="text-muted-foreground mt-6 text-center text-sm">
+            Your data never leaves your browser. Built using{' '}
+            <a
+              href="https://isomorphic-git.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-foreground underline"
+            >
+              isomorphic-git
+            </a>
+            .
           </footer>
         </div>
       </div>
