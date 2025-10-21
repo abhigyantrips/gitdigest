@@ -90,7 +90,16 @@ export default defineConfig({
     global: 'globalThis',
   },
   optimizeDeps: {
-    include: ['isomorphic-git', 'ignore', 'gpt-tokenizer', 'buffer'],
+    include: [
+      'isomorphic-git',
+      'ignore',
+      'gpt-tokenizer',
+      'buffer',
+      'three',
+      '@react-three/fiber',
+      '@react-spring/three',
+      '@shadergradient/react',
+    ],
     esbuildOptions: {
       define: {
         global: 'globalThis',
