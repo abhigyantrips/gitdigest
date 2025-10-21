@@ -7,6 +7,7 @@ import { defineConfig } from 'vite';
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: 'https://g.abhi.now/dist/',
   build: {
     rollupOptions: {
       output: {
@@ -90,16 +91,7 @@ export default defineConfig({
     global: 'globalThis',
   },
   optimizeDeps: {
-    include: [
-      'isomorphic-git',
-      'ignore',
-      'gpt-tokenizer',
-      'buffer',
-      'three',
-      '@react-three/fiber',
-      '@react-spring/three',
-      '@shadergradient/react',
-    ],
+    include: ['isomorphic-git', 'ignore', 'gpt-tokenizer', 'buffer'],
     esbuildOptions: {
       define: {
         global: 'globalThis',
