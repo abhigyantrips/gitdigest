@@ -4,9 +4,7 @@ import {
   FileText,
   FolderGit2,
   GitCompare,
-  Heart,
   Lightbulb,
-  Lock,
   Rocket,
   Save,
 } from 'lucide-react';
